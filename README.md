@@ -27,17 +27,17 @@ Fully generic. No FRC/game references anywhere in this file.
 - `clearance_func` — an arbitrary callable added as an extra residual term, for "must clear this obstacle" constraints (see `FuelClearance.py` below for the example implementation of this hook).
 - `.levenberg_marquardt()` returns `True`/`False` for whether it actually converged — always check this before trusting `solver.vx`/`.phi`/`.theta`.
 
-## The reference pipeline (generic technique, FRC900 example numbers)
+## The reference pipeline (FRC900 example numbers)
 
 **`FuelClearance.py`** — one concrete implementation of the `clearance_func` hook: walks the trajectory backward from the target, finds where it crosses the target's horizontal boundary, and applies a smooth soft-penalty (`log(1+exp(...))`, so it's differentiable) if it's too low there at that point. The pattern (find the constraint-crossing point along the trajectory, penalize smoothly) generalizes; the specific numbers (hub size/position, ball diameter) don't.
 
-**`FuelPath.py`** — a validation harness: samples known-good shots from a precomputed table, runs them back through `ProjectileSolver`, and reports a table of solved-vs-expected angles and hit/miss distance. Good template for validating your own solver setup against known data.
+**`FuelPath.py`** — validation: samples known-good shots from a precomputed table, runs them back through `ProjectileSolver`, and reports a table of solved-vs-expected angles and hit/miss distance. Good template for validating your own solver setup against known data.
 
-**`TrajectorySurfaces/`** — the actual "make it fast enough for a robot loop" pipeline:
+**`TrajectorySurfaces/`** — makes the system fast enough for a robot loop:
 1. `TrajectorySurface.py` — for a grid of (distance, forward velocity, lateral velocity), runs the LM solver at every grid point and saves the resulting `theta`/`phi` surfaces to `.npz`.
 2. `GenerateValidShotProfile.py` — across multiple flywheel speeds (RPS), keeps only the grid points whose solved angles are within the launcher's mechanical limits, producing a table of every physically achievable (distance, velocity, RPS) combination.
 3. `FitTrajectorySurface.py` — drops NaNs/outliers from the raw surfaces and fits a 4th-degree polynomial model (`theta`/`phi` as a function of distance and velocity) so the robot can evaluate it in microseconds instead of running LM live.
-4. `PlotTrajectorySurfaces.py` — plots the raw surfaces against the fitted polynomial for a sanity check.
+4. `PlotTrajectorySurfaces.py` — plots the raw surfaces against the fitted polynomial for to validate the polynomial.
 5. `LoadSurface.py` — a small utility to inner-join separately-generated phi/theta CSVs by key.
 
 **`LaunchJavaFiles/PolynomialModel.java`** — loads the JSON polynomial coefficients exported by `FitTrajectorySurface.py` and evaluates them on the robot at runtime. Completely generic 2-variable polynomial evaluator; nothing FRC-specific in the class itself.
@@ -52,7 +52,6 @@ Fully generic. No FRC/game references anywhere in this file.
 | `get_frc900_spin_and_speed_from_shooter_rps()` | `FuelPath.py`, `TrajectorySurface.py` | Your actuator's own speed/spin-vs-input curve (this one bakes in FRC900's specific gear ratio and wheel size) |
 | `phi_bounds`/`theta_bounds` | `FuelPath.py`, `TrajectorySurface.py`, `GenerateValidShotProfile.py`, `FitTrajectorySurface.py` | Your launcher's actual mechanical range of motion |
 | `r_vals`/`vf_vals`/`vl_vals` | `TrajectorySurface.py` | The distance/velocity range you actually expect to operate in |
-| `'ProjectileMotionSim/TrajectorySurfaces/...'` path strings | most of `TrajectorySurfaces/`, `FuelPath.py` | Not FRC-specific, just brittle — see path note below |
 
 ## Setup
 
@@ -101,7 +100,9 @@ python ProjectileMotionSim/TrajectorySurfaces/TrajectorySurface.py
 
 ## Worth knowing
 
-**`theta`/`phi` swap meaning between the engine and the pipeline scripts.** Your own `BallisticsMapper.pdf` calls this out directly: the paper's text defines θ as elevation and φ as azimuth, but says the figures (generated from this code) use the opposite, and flags it in bold both times. Concretely: `ProjectilePath.py`'s comments describe `theta` as a "polar angle" and `phi` as "azimuthal" (standard z-up phrasing), but since gravity is along **-y** here, `phi = arctan2(vy, vx)` is what actually behaves as elevation, and `theta = arcsin(vz/v_mag)` behaves as azimuth/lateral aim — which is what all the `TrajectorySurfaces/` bounds (`phi` narrow at 45°–75°, `theta` wide at ~0°–340°) assume. Not a bug, just worth knowing which one you're looking at before wiring this into a different axis convention.
+### Read `ProjectileMotionSim.pdf` for an in-depth scholarly explanation of the project.
+
+**`theta`/`phi` swap meaning between the engine and the pipeline scripts.** `ProjectileMotionSim.pdf` calls this out directly: the paper's text defines θ as elevation and φ as azimuth, but says the figures (generated from this code) use the opposite, and flags it in bold both times. Concretely: `ProjectilePath.py`'s comments describe `theta` as a "polar angle" and `phi` as "azimuthal" (standard z-up phrasing), but since gravity is along **-y** here, `phi = arctan2(vy, vx)` is what actually behaves as elevation, and `theta = arcsin(vz/v_mag)` behaves as azimuth/lateral aim — which is what all the `TrajectorySurfaces/` bounds (`phi` narrow at 45°–75°, `theta` wide at ~0°–340°) assume. 
 
 ## License
 
